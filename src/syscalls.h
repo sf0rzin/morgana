@@ -39,7 +39,7 @@ typedef struct _OBJECT_ATTRIBUTES {
 #endif
 
 #define SYSCALL_STUB_SIZE 32
-#define SYSCALL_MAX 8
+#define SYSCALL_MAX 16
 
 namespace sc {
 
@@ -57,5 +57,11 @@ LONG NtWriteFile(HANDLE FileHandle, HANDLE Event, PVOID ApcRoutine, PVOID ApcCon
                  PIO_STATUS_BLOCK IoStatusBlock, PVOID Buffer, ULONG Length,
                  PLARGE_INTEGER ByteOffset, PULONG Key);
 LONG NtClose(HANDLE Handle);
+LONG NtOpenSection(PHANDLE SectionHandle, ULONG DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes);
+LONG NtMapViewOfSection(HANDLE SectionHandle, HANDLE ProcessHandle, PVOID* BaseAddress,
+                        ULONG_PTR ZeroBits, SIZE_T CommitSize, PLARGE_INTEGER SectionOffset,
+                        PSIZE_T ViewSize, ULONG InheritDisposition, ULONG AllocationType,
+                        ULONG Win32Protect);
+LONG NtUnmapViewOfSection(HANDLE ProcessHandle, PVOID BaseAddress);
 
 }

