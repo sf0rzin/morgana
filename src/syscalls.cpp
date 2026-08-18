@@ -252,7 +252,7 @@ bool init() {
         if (!build_stub(g_entries[i])) return false;
     }
     // drop write permission on all generated code pages
-    spoof::finalize();
+    if (!spoof::finalize()) return false;
 
     // Self-check-safe refresh: re-resolve every SSN and `syscall` target
     // against the pristine \KnownDlls copy and update the RW stub slots.

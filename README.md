@@ -11,15 +11,30 @@ Use only on owned systems, CTFs, or environments with explicit permission.
 
 ## Build
 
-Requires an x64 MinGW-w64 toolchain.
+Requires an x64 MinGW-w64 toolchain, Windows PowerShell 5.1 or newer, and a
+Windows/CPU combination with user-mode Hardware-enforced Stack Protection.
 
 ```text
-g++ -O2 -Isrc -o server.exe src/server.cpp src/crypto.cpp src/kx.cpp -lws2_32 -lbcrypt -lcrypt32 -lsecur32
-g++ -O2 '-Wl,--disable-dynamicbase' -Isrc -o client.exe src/client.cpp src/syscalls.cpp src/spoof.cpp src/crypto.cpp src/evasion.cpp src/kx.cpp -lws2_32 -lbcrypt -lcrypt32 -lsecur32
+powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
+
+`build.ps1` marks `client.exe` as CETCOMPAT after the MinGW link. When HSP is
+active, the generated RX page is registered as a dynamic CET-compatible range;
+if Windows restricts that API to an out-of-process caller, initialization
+upgrades the process to strict HSP before any wrapper executes.
 
 `--disable-dynamicbase` is a lab-only trade-off used by the memory-audit
 profile. The default client does not write to the loaded `ntdll` image.
+
+## Test
+
+```text
+powershell -ExecutionPolicy Bypass -File .\build.ps1 -Test
+```
+
+The wrapper test validates 12-argument forwarding, dynamic unwind metadata,
+the canonical thread-start chain, reentrant and concurrent calls, and execution
+under HSP. It intentionally fails when the OS or CPU cannot enable HSP.
 
 ## Run
 

